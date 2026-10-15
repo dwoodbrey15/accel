@@ -11,72 +11,58 @@ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:en
 :root[data-theme="dark"]{--bg:#0f1a22;--fg:#e4edf2;--mut:#8da0ad;--card:#16242e;--line:#2c3f4c;--acc:#3fd0c4;--bad:#ff8a7a}
 html{color-scheme:light dark}
 *{box-sizing:border-box}
-body{margin:0;padding:14px;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;padding:10px 12px;background:var(--bg);color:var(--fg);font:16px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:640px;margin:0 auto}
-h1{font-size:1.25rem;margin:0 0 4px}
-.sub{margin:0 0 12px;color:var(--mut);font-size:.9rem}
-button,select{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;padding:10px 12px}
-button.main{background:var(--acc);border-color:var(--acc);color:var(--bg);font-weight:600;width:100%;padding:14px;margin-bottom:12px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+h1{font-size:1.1rem;margin:0}
+button,select{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;padding:8px 10px}
+button.main{background:var(--acc);border-color:var(--acc);color:var(--bg);font-weight:600;padding:8px 18px}
 button:disabled{opacity:.5}
-.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
 .seg button.on{background:var(--acc);border-color:var(--acc);color:var(--bg);font-weight:600}
 canvas{width:100%;display:block;background:var(--card);border:1px solid var(--line);border-radius:12px}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:12px}
-.panel h2{font-size:1rem;margin:0 0 4px}
-.sgwrap{position:relative;margin-top:4px}
-.sgwrap canvas{height:150px;background:#08101e}
-.sgwrap span{position:absolute;left:6px;font-size:.75rem;color:#fff;text-shadow:0 0 3px #000}
-.tl{display:flex;justify-content:space-between;font-size:.75rem;color:var(--mut);margin-top:2px}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-label{display:block;font-size:.9rem;margin-top:10px}
-input[type=range]{width:100%}
-select{width:100%;margin-top:4px}
-#peak{font-weight:600;margin:8px 0 2px}
-#stat,#recst,.note{font-size:.85rem;color:var(--mut)}
-#err{color:var(--bad);font-size:.9rem;margin-top:8px}
+#sp{height:clamp(130px,25svh,230px)}
+.sgwrap{position:relative}
+.sgwrap canvas{height:clamp(80px,15svh,140px);background:#08101e}
+.sgwrap span{position:absolute;left:6px;font-size:.7rem;color:#fff;text-shadow:0 0 3px #000}
+#peak{font-weight:600;font-size:.95rem;margin:6px 0}
+.tl{display:flex;justify-content:space-between;gap:6px;font-size:.7rem;color:var(--mut);margin-top:2px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:10px}
+label{display:block;font-size:.8rem}
+input[type=range]{width:100%;margin:2px 0 0}
+select{width:100%;padding:5px 8px}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+#recst{font-size:.8rem;color:var(--mut);align-self:end}
+.note{margin-top:8px;font-size:.75rem;color:var(--mut)}
+#err{color:var(--bad);font-size:.85rem;margin-top:6px}
 </style>
 </head>
 <body>
 <main>
-<h1>Vibration spectrum and spectrogram</h1>
-<p class="sub">Set the phone on a surface or hold it, then start. Safari delivers about 60 readings a second, so you see motion from 0 to roughly 30 Hz.</p>
-<button class="main" id="go">Start sensors</button>
-
+<header><h1>Vibration analyzer</h1><button class="main" id="go">Start</button></header>
 <div class="seg" id="axis">
-<button data-a="0">X</button><button data-a="1">Y</button><button data-a="2">Z</button><button data-a="3" class="on">All</button>
+<button data-a="0">X</button><button data-a="1">Y</button><button data-a="2">Z</button><button data-a="3" class="on">Combined</button>
 </div>
 <canvas id="sp"></canvas>
-<div id="peak">Waiting to start</div>
-<div id="stat"></div>
-
-<div class="panel">
-<h2>Spectrogram</h2>
+<div id="peak">Press Start</div>
 <div class="sgwrap"><canvas id="sg"></canvas><span id="f1" style="top:3px">30 Hz</span><span id="f2" style="top:50%;transform:translateY(-50%)">15 Hz</span><span style="bottom:3px">0 Hz</span></div>
-<div class="tl"><span>30 s ago</span><span>now</span></div>
-<label>Analysis window
-<select id="win"><option value="128">Short: faster, blurrier</option><option value="256" selected>Medium</option><option value="512">Long: slower, sharper</option></select></label>
-<label>Floor: <b id="flv">-80</b> dB
-<input type="range" id="fl" min="-100" max="-30" step="5" value="-80"></label>
+<div class="tl"><span>30 s ago</span><span id="stat"></span><span>now</span></div>
+<div class="grid">
+<label>Octaves up: <b id="ocv">7</b><input type="range" id="oct" min="3" max="10" step="1" value="7"></label>
+<label>Sound gate: <b id="gtv">-40</b> dB<input type="range" id="gate" min="-60" max="-20" step="5" value="-40"></label>
+<label>Volume<input type="range" id="vol" min="0" max="1" step="0.05" value="0.3"></label>
+<label>Floor: <b id="flv">-80</b> dB<input type="range" id="fl" min="-100" max="-30" step="5" value="-80"></label>
+<label>Window<select id="win"><option value="128">Short</option><option value="256" selected>Medium</option><option value="512">Long</option></select></label>
+<div id="recst">Nothing recorded</div>
 </div>
-
-<div class="panel">
-<h2>Hear it</h2>
-<div class="note">The strongest peaks in the spectrum become tones, raised by whole octaves so they land in hearing range. Nothing sounds until a peak rises above the sound gate. Turn the silent switch off first, since iPhone mutes web audio with it.</div>
-<label>Octaves up: <b id="ocv">7</b>
-<input type="range" id="oct" min="3" max="10" step="1" value="7"></label>
-<label>Sound gate: <b id="gtv">-40</b> dB
-<input type="range" id="gate" min="-60" max="-20" step="5" value="-40"></label>
-<label>Volume
-<input type="range" id="vol" min="0" max="1" step="0.05" value="0.4"></label>
-<div class="two"><button id="snd" disabled>Play live sound</button><button id="rec" disabled>Record</button></div>
-<div class="two"><button id="rep" disabled>Replay</button><div id="recst" style="align-self:center">Nothing recorded</div></div>
-</div>
+<div class="three"><button id="snd" disabled>Play sound</button><button id="rec" disabled>Record</button><button id="rep" disabled>Replay</button></div>
+<div class="note">Sound follows the curve shown: each dot is a tone, and its loudness matches its height. Tones sound only above the dashed gate line. Turn the silent switch off.</div>
 <div id="err"></div>
 </main>
 <script>
 const $=id=>document.getElementById(id);
 const K=8,COL=['#e5484d','#30a46c','#3e63dd'];
-let T=[],X=[],Y=[],Z=[],fs=60,axis=3,DB=null,FL=-80,CE=-10,GATE=-40,lastTick=0,vf=new Float64Array(K),vg=new Float64Array(K);
+let T=[],X=[],Y=[],Z=[],fs=60,axis=3,DB=null,FL=-80,CE=-10,GATE=-40,lastTick=0,PK=[],vf=new Float64Array(K),vg=new Float64Array(K);
 let ac,master,oscs=[],gains=[],live=false,recording=false,replaying=false,rec=[],ri=0;
 
 const STOPS=[[0,8,12,30],[.25,30,40,110],[.5,20,140,140],[.75,240,200,60],[1,255,250,230]];
@@ -144,14 +130,14 @@ function analyze(){
   const d=DB[axis],k0=Math.ceil(0.5/(fs/N));let pk=k0,pv=-999;
   for(let k=k0;k<half;k++)if(d[k]>pv){pv=d[k];pk=k;}
   $('peak').textContent='Strongest: '+(pk*fs/N).toFixed(1)+' Hz at '+(Math.pow(10,pv/20)*101.97).toFixed(1)+' mg';
-  $('stat').textContent='Sampling '+fs+' Hz, range 0 to '+fs/2+' Hz, resolution '+(fs/N).toFixed(2)+' Hz';
+  $('stat').textContent='Sampling '+fs+' Hz, resolution '+(fs/N).toFixed(2)+' Hz';
   $('f1').textContent=fs/2+' Hz';$('f2').textContent=fs/4+' Hz';
-  drawSpec();addCol(d);
+  PK=bank(d);drawSpec();addCol(d);
   return d;
 }
 
 function drawSpec(){
-  const cv=$('sp'),dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=Math.round(W*0.55);
+  const cv=$('sp'),dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
   if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);}
   const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
   const cs=getComputedStyle(document.documentElement),line=cs.getPropertyValue('--line').trim(),mut=cs.getPropertyValue('--mut').trim(),acc=cs.getPropertyValue('--acc').trim();
@@ -165,7 +151,10 @@ function drawSpec(){
   const half=DB[0].length,df=nyq/(half-1);
   const curve=(d,color,lw)=>{g.strokeStyle=color;g.lineWidth=lw;g.beginPath();
     for(let k=1;k<half;k++){const x=Lm+w*(k*df)/nyq,y=Tm+h*Math.min(1,Math.max(0,(CE-d[k])/(CE-FL)));k===1?g.moveTo(x,y):g.lineTo(x,y);}g.stroke();};
-  if(axis===3)for(let c=0;c<3;c++)curve(DB[c],COL[c],1.5);else curve(DB[axis],acc,2);
+  if(axis===3){g.globalAlpha=0.4;for(let c=0;c<3;c++)curve(DB[c],COL[c],1);g.globalAlpha=1;curve(DB[3],acc,2.2);}else curve(DB[axis],acc,2.2);
+  if(GATE>FL){const gy=Tm+h*(CE-GATE)/(CE-FL);g.setLineDash([4,4]);g.strokeStyle=mut;g.lineWidth=1;g.beginPath();g.moveTo(Lm,gy);g.lineTo(Lm+w,gy);g.stroke();g.setLineDash([]);}
+  g.fillStyle=acc;
+  for(const [f,lv] of PK){g.beginPath();g.arc(Lm+w*f/nyq,Tm+h*Math.min(1,Math.max(0,(CE-lv)/(CE-FL))),3.5,0,7);g.fill();}
 }
 
 function addCol(d){
@@ -184,7 +173,7 @@ function bank(d){
   for(let k=k0;k<d.length-1;k++){
     const a=d[k-1],b=d[k],c=d[k+1];
     if(b>a&&b>=c&&b>GATE){const den=a-2*b+c,dl=den?0.5*(a-c)/den:0;
-      pk.push([(k+dl)*df,Math.min(1,(b-0.25*(a-c)*dl-GATE)/(CE-GATE))]);}
+      pk.push([(k+dl)*df,b-0.25*(a-c)*dl]);}
   }
   return pk.sort((x,y)=>y[1]-x[1]).slice(0,K);
 }
@@ -193,7 +182,7 @@ function audioInit(){
   if(ac)return;
   ac=new (window.AudioContext||window.webkitAudioContext)();
   master=ac.createGain();master.gain.value=+$('vol').value;
-  const cp=ac.createDynamicsCompressor();master.connect(cp);cp.connect(ac.destination);
+  const cp=ac.createDynamicsCompressor();cp.threshold.value=-6;cp.knee.value=0;cp.ratio.value=20;cp.attack.value=0.003;cp.release.value=0.15;master.connect(cp);cp.connect(ac.destination);
   for(let i=0;i<K;i++){const o=ac.createOscillator(),g=ac.createGain();g.gain.value=0;o.frequency.value=100;o.connect(g);g.connect(master);o.start();oscs.push(o);gains.push(g);}
 }
 
@@ -202,20 +191,20 @@ function apply(pk){
   const oct=Math.pow(2,+$('oct').value),t=ac.currentTime,claimed=new Array(K).fill(false),tg=new Float64Array(K),tf=vf.slice();
   (pk||[]).forEach(([f,p])=>{
     let v=-1,best=1.2;
-    for(let i=0;i<K;i++)if(!claimed[i]&&vg[i]>0.02){const dd=Math.abs(vf[i]-f);if(dd<best){best=dd;v=i;}}
+    for(let i=0;i<K;i++)if(!claimed[i]&&vg[i]>0){const dd=Math.abs(vf[i]-f);if(dd<best){best=dd;v=i;}}
     if(v<0){let g=9;for(let i=0;i<K;i++)if(!claimed[i]&&vg[i]<g){g=vg[i];v=i;}}
     if(v<0)return;
-    claimed[v]=true;tg[v]=p;tf[v]=f;
+    claimed[v]=true;tg[v]=Math.pow(10,Math.min(0,p-CE)/20);tf[v]=f;
   });
   for(let i=0;i<K;i++){
     const hz=tf[i]*oct;vf[i]=tf[i];vg[i]=tg[i];
     oscs[i].frequency.setTargetAtTime(Math.min(Math.max(hz,20),20000),t,0.04);
-    gains[i].gain.setTargetAtTime(hz<16000?0.15*tg[i]:0,t,0.06);
+    gains[i].gain.setTargetAtTime(hz<16000?tg[i]:0,t,0.06);
   }
 }
 
 function ui(){
-  $('snd').textContent=live?'Stop live sound':'Play live sound';
+  $('snd').textContent=live?'Stop sound':'Play sound';
   $('rec').textContent=recording?'Stop recording':'Record';
   $('rep').textContent=replaying?'Stop replay':'Replay';
   $('rep').disabled=!rec.length||recording;
@@ -224,7 +213,7 @@ function ui(){
 function tick(){
   FL=+$('fl').value;GATE=+$('gate').value;
   let p=null;
-  if(T.length>=40){const d=analyze();if(d)p=bank(d);}
+  if(T.length>=40){const d=analyze();if(d)p=PK;}
   if(recording&&p){rec.push(p);if(rec.length>=1200){recording=false;ui();}}
   if(replaying){
     if(ri<rec.length)apply(rec[ri++]);else{replaying=false;apply(null);ui();}
