@@ -1,4 +1,4 @@
-const VERSION = 'v3';
+const VERSION = 'v4';
 const BASE = new URL('./', self.location.href);
 const PREFIX = 'vibration-offline-' + BASE.pathname + '-';
 const CACHE = PREFIX + VERSION;
