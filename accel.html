@@ -44,7 +44,7 @@ select{width:100%;padding:5px 8px}
 </head>
 <body>
 <main>
-<header><h1>Vibration analyzer</h1><button class="main" id="go">Start</button></header>
+<header><h1>Vibration analyzer · v3</h1><button class="main" id="go">Start</button></header>
 <div class="seg" id="axis">
 <button data-a="0">X</button><button data-a="1">Y</button><button data-a="2">Z</button><button data-a="3" class="on">Combined</button>
 </div>
@@ -62,17 +62,20 @@ select{width:100%;padding:5px 8px}
 </div>
 <div class="three"><button id="snd" disabled>Play sound</button><button id="rec" disabled>Record</button><button id="rep" disabled>Replay</button></div>
 <div class="note">Sound follows the curve shown: each dot is a tone, and its loudness matches its height. Tones sound only above the dashed gate line. Turn the silent switch off.</div>
+<div class="note">Version 3 · Vertical scale: dB relative to 1 m/s². The top starts at 0 dB and expands automatically with 3 dB minimum headroom; it holds the highest range until reload.</div>
 <div id="err"></div>
 <div class="note" id="offline-panel"><span id="offline-status" role="status" aria-live="polite">Preparing offline access…</span><br>After setup, use Safari’s Share → Add to Home Screen. Open the Home Screen app once online before testing airplane mode.</div>
 </main>
 <script>
 const $=id=>document.getElementById(id);
+const AUDIO_REFERENCE_DB=-10;
 const K=8,COL=['#e5484d','#30a46c','#3e63dd'];
-let T=[],X=[],Y=[],Z=[],fs=60,axis=3,DB=null,FL=-80,CE=-10,GATE=-40,lastTick=0,PK=[],vf=new Float64Array(K),vg=new Float64Array(K);
+let T=[],X=[],Y=[],Z=[],fs=60,axis=3,DB=null,FL=-80,CE=0,GATE=-40,lastTick=0,PK=[],vf=new Float64Array(K),vg=new Float64Array(K);
 let ac,master,oscs=[],gains=[],live=false,recording=false,replaying=false,rec=[],ri=0;
 
 const STOPS=[[0,8,12,30],[.25,30,40,110],[.5,20,140,140],[.75,240,200,60],[1,255,250,230]];
 const LUT=Array.from({length:256},(_,i)=>{const p=i/255;let s=0;while(s<3&&p>STOPS[s+1][0])s++;const a=STOPS[s],b=STOPS[s+1],u=(p-a[0])/(b[0]-a[0]);return [1,2,3].map(c=>a[c]+(b[c]-a[c])*u).concat(255);});
+const spectrogramHistory=[];let spectrumScaleChanged=false;
 const sg=$('sg'),sgx=sg.getContext('2d');sg.width=300;sg.height=128;sgx.fillStyle='rgb(8,12,30)';sgx.fillRect(0,0,300,128);
 
 function fft(re,im){const n=re.length;
@@ -133,10 +136,14 @@ function analyze(){
   A.push(all);
   if(!DB||DB[0].length!==half)DB=A.map(()=>new Float32Array(half).fill(-120));
   for(let c=0;c<4;c++)for(let k=0;k<half;k++)DB[c][k]=0.4*DB[c][k]+0.6*20*Math.log10(A[c][k]+1e-9);
-  const d=DB[axis],k0=Math.ceil(0.5/(fs/N));let pk=k0,pv=-999;
+  const d=DB[axis];
+  let highest=-Infinity;for(let k=1;k<d.length;k++)highest=Math.max(highest,d[k]);
+  const nextCeiling=Math.max(0,Math.ceil((highest+3)/10)*10);
+  if(nextCeiling>CE){CE=nextCeiling;spectrumScaleChanged=true;}
+  const k0=Math.ceil(0.5/(fs/N));let pk=k0,pv=-999;
   for(let k=k0;k<half;k++)if(d[k]>pv){pv=d[k];pk=k;}
   $('peak').textContent='Strongest: '+(pk*fs/N).toFixed(1)+' Hz at '+(Math.pow(10,pv/20)*101.97).toFixed(1)+' mg';
-  $('stat').textContent='Sampling '+fs+' Hz, resolution '+(fs/N).toFixed(2)+' Hz';
+  $('stat').textContent='Sampling '+fs+' Hz, resolution '+(fs/N).toFixed(2)+' Hz, top '+CE+' dB';
   $('f1').textContent=fs/2+' Hz';$('f2').textContent=fs/4+' Hz';
   PK=bank(d);drawSpec();addCol(d);
   return d;
@@ -164,6 +171,15 @@ function drawSpec(){
 }
 
 function addCol(d){
+  spectrogramHistory.push(Float32Array.from(d));
+  if(spectrogramHistory.length>300)spectrogramHistory.shift();
+  if(spectrumScaleChanged){
+    spectrumScaleChanged=false;sgx.fillStyle='rgb(8,12,30)';sgx.fillRect(0,0,300,128);
+    for(const column of spectrogramHistory)renderCol(column);
+  }else renderCol(d);
+}
+
+function renderCol(d){
   sgx.drawImage(sg,-1,0);
   const img=sgx.createImageData(1,128),L=d.length-1;
   for(let r=0;r<128;r++){
@@ -200,7 +216,7 @@ function apply(pk){
     for(let i=0;i<K;i++)if(!claimed[i]&&vg[i]>0){const dd=Math.abs(vf[i]-f);if(dd<best){best=dd;v=i;}}
     if(v<0){let g=9;for(let i=0;i<K;i++)if(!claimed[i]&&vg[i]<g){g=vg[i];v=i;}}
     if(v<0)return;
-    claimed[v]=true;tg[v]=Math.pow(10,Math.min(0,p-CE)/20);tf[v]=f;
+    claimed[v]=true;tg[v]=Math.pow(10,Math.min(0,p-AUDIO_REFERENCE_DB)/20);tf[v]=f;
   });
   for(let i=0;i<K;i++){
     const hz=tf[i]*oct;vf[i]=tf[i];vg[i]=tg[i];
