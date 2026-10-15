@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vibration spectrum and spectrogram</title>
+<style>
+:root{--bg:#eef2f5;--fg:#14212b;--mut:#5b6b77;--card:#fff;--line:#c3cfd8;--acc:#0b7a75;--bad:#b42318;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a22;--fg:#e4edf2;--mut:#8da0ad;--card:#16242e;--line:#2c3f4c;--acc:#3fd0c4;--bad:#ff8a7a}}
+:root[data-theme="dark"]{--bg:#0f1a22;--fg:#e4edf2;--mut:#8da0ad;--card:#16242e;--line:#2c3f4c;--acc:#3fd0c4;--bad:#ff8a7a}
+html{color-scheme:light dark}
+*{box-sizing:border-box}
+body{margin:0;padding:14px;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:640px;margin:0 auto}
+h1{font-size:1.25rem;margin:0 0 4px}
+.sub{margin:0 0 12px;color:var(--mut);font-size:.9rem}
+button,select{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;padding:10px 12px}
+button.main{background:var(--acc);border-color:var(--acc);color:var(--bg);font-weight:600;width:100%;padding:14px;margin-bottom:12px}
+button:disabled{opacity:.5}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.seg button.on{background:var(--acc);border-color:var(--acc);color:var(--bg);font-weight:600}
+canvas{width:100%;display:block;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:12px}
+.panel h2{font-size:1rem;margin:0 0 4px}
+.sgwrap{position:relative;margin-top:4px}
+.sgwrap canvas{height:150px;background:#08101e}
+.sgwrap span{position:absolute;left:6px;font-size:.75rem;color:#fff;text-shadow:0 0 3px #000}
+.tl{display:flex;justify-content:space-between;font-size:.75rem;color:var(--mut);margin-top:2px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+label{display:block;font-size:.9rem;margin-top:10px}
+input[type=range]{width:100%}
+select{width:100%;margin-top:4px}
+#peak{font-weight:600;margin:8px 0 2px}
+#stat,#recst,.note{font-size:.85rem;color:var(--mut)}
+#err{color:var(--bad);font-size:.9rem;margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>Vibration spectrum and spectrogram</h1>
+<p class="sub">Set the phone on a surface or hold it, then start. Safari delivers about 60 readings a second, so you see motion from 0 to roughly 30 Hz.</p>
+<button class="main" id="go">Start sensors</button>
+
+<div class="seg" id="axis">
+<button data-a="0">X</button><button data-a="1">Y</button><button data-a="2">Z</button><button data-a="3" class="on">All</button>
+</div>
+<canvas id="sp"></canvas>
+<div id="peak">Waiting to start</div>
+<div id="stat"></div>
+
+<div class="panel">
+<h2>Spectrogram</h2>
+<div class="sgwrap"><canvas id="sg"></canvas><span id="f1" style="top:3px">30 Hz</span><span id="f2" style="top:50%;transform:translateY(-50%)">15 Hz</span><span style="bottom:3px">0 Hz</span></div>
+<div class="tl"><span>30 s ago</span><span>now</span></div>
+<label>Analysis window
+<select id="win"><option value="128">Short: faster, blurrier</option><option value="256" selected>Medium</option><option value="512">Long: slower, sharper</option></select></label>
+<label>Floor: <b id="flv">-80</b> dB
+<input type="range" id="fl" min="-100" max="-30" step="5" value="-80"></label>
+</div>
+
+<div class="panel">
+<h2>Hear it</h2>
+<div class="note">Every frequency is rebuilt as a tone, raised by whole octaves so it lands in hearing range. Turn the silent switch off first, since iPhone mutes web audio with it.</div>
+<label>Octaves up: <b id="ocv">7</b>
+<input type="range" id="oct" min="3" max="10" step="1" value="7"></label>
+<label>Volume
+<input type="range" id="vol" min="0" max="1" step="0.05" value="0.4"></label>
+<div class="two"><button id="snd" disabled>Play live sound</button><button id="rec" disabled>Record</button></div>
+<div class="two"><button id="rep" disabled>Replay</button><div id="recst" style="align-self:center">Nothing recorded</div></div>
+</div>
+<div id="err"></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const M=64,COL=['#e5484d','#30a46c','#3e63dd'];
+let T=[],X=[],Y=[],Z=[],fs=60,axis=3,DB=null,FL=-80,CE=-10;
+let ac,master,oscs=[],gains=[],live=false,recording=false,replaying=false,rec=[],ri=0;
+
+const STOPS=[[0,8,12,30],[.25,30,40,110],[.5,20,140,140],[.75,240,200,60],[1,255,250,230]];
+const LUT=Array.from({length:256},(_,i)=>{const p=i/255;let s=0;while(s<3&&p>STOPS[s+1][0])s++;const a=STOPS[s],b=STOPS[s+1],u=(p-a[0])/(b[0]-a[0]);return [1,2,3].map(c=>a[c]+(b[c]-a[c])*u).concat(255);});
+const sg=$('sg'),sgx=sg.getContext('2d');sg.width=300;sg.height=128;sgx.fillStyle='rgb(8,12,30)';sgx.fillRect(0,0,300,128);
+
+function fft(re,im){const n=re.length;
+  for(let i=1,j=0;i<n;i++){let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]];}}
+  for(let len=2;len<=n;len<<=1){const ang=-2*Math.PI/len,wr=Math.cos(ang),wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){let cr=1,ci=0;for(let k=0;k<len/2;k++){const a=i+k,b=a+len/2;const tr=re[b]*cr-im[b]*ci,ti=re[b]*ci+im[b]*cr;re[b]=re[a]-tr;im[b]=im[a]-ti;re[a]+=tr;im[a]+=ti;const nc=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=nc;}}}}
+
+function onMotion(e){
+  const a=e.accelerationIncludingGravity;if(!a||a.x==null)return;
+  T.push(e.timeStamp/1000);X.push(a.x);Y.push(a.y);Z.push(a.z);
+  if(T.length>2400){T.splice(0,600);X.splice(0,600);Y.splice(0,600);Z.splice(0,600);}
+}
+
+$('go').onclick=async()=>{
+  try{
+    if(typeof DeviceMotionEvent!=='undefined'&&DeviceMotionEvent.requestPermission){
+      const r=await DeviceMotionEvent.requestPermission();
+      if(r!=='granted'){$('err').textContent='Motion access was denied. Allow it in Settings > Safari > Motion & Orientation Access, then reload.';return;}
+    }
+    addEventListener('devicemotion',onMotion);
+    setInterval(tick,100);
+    $('go').disabled=true;$('go').textContent='Running';$('snd').disabled=false;$('rec').disabled=false;
+    $('peak').textContent='Collecting samples';
+    setTimeout(()=>{if(!T.length)$('err').textContent='No motion data is arriving. Check Settings > Safari > Motion & Orientation Access, and that this page is loaded over HTTPS.';},2500);
+  }catch(e){$('err').textContent='Could not start the sensors ('+e.name+').';}
+};
+
+document.querySelectorAll('#axis button').forEach(b=>b.onclick=()=>{
+  axis=+b.dataset.a;document.querySelectorAll('#axis button').forEach(x=>x.classList.toggle('on',x===b));});
+$('win').onchange=()=>{DB=null;};
+$('fl').oninput=()=>$('flv').textContent=$('fl').value;
+$('oct').oninput=()=>$('ocv').textContent=$('oct').value;
+$('vol').oninput=()=>{if(master)master.gain.value=+$('vol').value;};
+
+function analyze(){
+  const N=+$('win').value,n=T.length;
+  const dts=[];for(let i=Math.max(1,n-60);i<n;i++)dts.push(T[i]-T[i-1]);dts.sort((a,b)=>a-b);
+  fs=Math.max(10,Math.min(200,Math.round(1/(dts[dts.length>>1]||0.0167))));
+  const t1=T[n-1],t0=t1-(N-1)/fs;
+  if(T[0]>t0){$('stat').textContent='Filling the window: '+Math.round(100*(t1-T[0])/((N-1)/fs))+'%';return null;}
+  const sig=[new Float64Array(N),new Float64Array(N),new Float64Array(N)],src=[X,Y,Z];
+  let j=0;
+  for(let i=0;i<N;i++){const t=t0+i/fs;while(j<n-2&&T[j+1]<t)j++;
+    const u=Math.min(1,Math.max(0,(t-T[j])/((T[j+1]-T[j])||1)));
+    for(let c=0;c<3;c++)sig[c][i]=src[c][j]*(1-u)+src[c][j+1]*u;}
+  const half=N/2+1,wv=new Float64Array(N);let ws=0;
+  for(let i=0;i<N;i++){wv[i]=0.5-0.5*Math.cos(2*Math.PI*i/(N-1));ws+=wv[i];}
+  const A=[0,1,2].map(c=>{
+    const re=new Float64Array(N),im=new Float64Array(N);let mu=0;
+    for(let i=0;i<N;i++)mu+=sig[c][i];mu/=N;
+    for(let i=0;i<N;i++)re[i]=(sig[c][i]-mu)*wv[i];
+    fft(re,im);const a=new Float32Array(half);
+    for(let k=0;k<half;k++)a[k]=2*Math.hypot(re[k],im[k])/ws;return a;});
+  const all=new Float32Array(half);
+  for(let k=0;k<half;k++)all[k]=Math.hypot(A[0][k],A[1][k],A[2][k]);
+  A.push(all);
+  if(!DB||DB[0].length!==half)DB=A.map(()=>new Float32Array(half).fill(-120));
+  for(let c=0;c<4;c++)for(let k=0;k<half;k++)DB[c][k]=0.4*DB[c][k]+0.6*20*Math.log10(A[c][k]+1e-9);
+  const d=DB[axis],k0=Math.ceil(0.5/(fs/N));let pk=k0,pv=-999;
+  for(let k=k0;k<half;k++)if(d[k]>pv){pv=d[k];pk=k;}
+  $('peak').textContent='Strongest: '+(pk*fs/N).toFixed(1)+' Hz at '+(Math.pow(10,pv/20)*101.97).toFixed(1)+' mg';
+  $('stat').textContent='Sampling '+fs+' Hz, range 0 to '+fs/2+' Hz, resolution '+(fs/N).toFixed(2)+' Hz';
+  $('f1').textContent=fs/2+' Hz';$('f2').textContent=fs/4+' Hz';
+  drawSpec();addCol(d);
+  return d;
+}
+
+function drawSpec(){
+  const cv=$('sp'),dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=Math.round(W*0.55);
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);}
+  const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+  const cs=getComputedStyle(document.documentElement),line=cs.getPropertyValue('--line').trim(),mut=cs.getPropertyValue('--mut').trim(),acc=cs.getPropertyValue('--acc').trim();
+  const Lm=34,Bm=18,Tm=6,Rm=8,w=W-Lm-Rm,h=H-Tm-Bm,nyq=fs/2;
+  g.font='11px system-ui,sans-serif';g.fillStyle=mut;g.strokeStyle=line;g.lineWidth=1;
+  g.textAlign='center';
+  for(let f=0;f<=nyq;f+=5){const x=Lm+w*f/nyq;g.beginPath();g.moveTo(x,Tm);g.lineTo(x,Tm+h);g.stroke();g.fillText(f,x,H-4);}
+  g.textAlign='right';
+  for(let d=CE;d>=FL;d-=20){const y=Tm+h*(CE-d)/(CE-FL);g.beginPath();g.moveTo(Lm,y);g.lineTo(Lm+w,y);g.stroke();g.fillText(d,Lm-4,y+4);}
+  if(!DB)return;
+  const half=DB[0].length,df=nyq/(half-1);
+  const curve=(d,color,lw)=>{g.strokeStyle=color;g.lineWidth=lw;g.beginPath();
+    for(let k=1;k<half;k++){const x=Lm+w*(k*df)/nyq,y=Tm+h*Math.min(1,Math.max(0,(CE-d[k])/(CE-FL)));k===1?g.moveTo(x,y):g.lineTo(x,y);}g.stroke();};
+  if(axis===3)for(let c=0;c<3;c++)curve(DB[c],COL[c],1.5);else curve(DB[axis],acc,2);
+}
+
+function addCol(d){
+  sgx.drawImage(sg,-1,0);
+  const img=sgx.createImageData(1,128),L=d.length-1;
+  for(let r=0;r<128;r++){
+    const f=(1-r/127)*L,i=Math.floor(f),u=f-i,v=d[i]*(1-u)+d[Math.min(i+1,L)]*u;
+    const p=Math.max(0,Math.min(1,(v-FL)/(CE-FL)));
+    img.data.set(LUT[Math.round(p*255)],r*4);
+  }
+  sgx.putImageData(img,299,0);
+}
+
+function bank(db){
+  const df=fs/(2*(db.length-1)),nyq=fs/2,p=new Float32Array(M);
+  for(let i=0;i<M;i++){const f=0.5+(nyq-0.5)*i/(M-1),k=Math.round(f/df);let d=-200;
+    for(let q=k-1;q<=k+1;q++)if(q>=1&&q<db.length)d=Math.max(d,db[q]);
+    p[i]=Math.max(0,Math.min(1,(d-FL)/(CE-FL)));}
+  return p;
+}
+
+function audioInit(){
+  if(ac)return;
+  ac=new (window.AudioContext||window.webkitAudioContext)();
+  master=ac.createGain();master.gain.value=+$('vol').value;
+  const cp=ac.createDynamicsCompressor();master.connect(cp);cp.connect(ac.destination);
+  for(let i=0;i<M;i++){const o=ac.createOscillator(),g=ac.createGain();g.gain.value=0;o.frequency.value=100;o.connect(g);g.connect(master);o.start();oscs.push(o);gains.push(g);}
+}
+
+function apply(p){
+  if(!ac)return;
+  const k=+$('oct').value,nyq=fs/2,t=ac.currentTime;
+  for(let i=0;i<M;i++){
+    const hz=(0.5+(nyq-0.5)*i/(M-1))*Math.pow(2,k);
+    oscs[i].frequency.setTargetAtTime(Math.min(hz,20000),t,0.03);
+    gains[i].gain.setTargetAtTime(p&&hz<16000?0.05*p[i]*p[i]:0,t,0.06);
+  }
+}
+
+function ui(){
+  $('snd').textContent=live?'Stop live sound':'Play live sound';
+  $('rec').textContent=recording?'Stop recording':'Record';
+  $('rep').textContent=replaying?'Stop replay':'Replay';
+  $('rep').disabled=!rec.length||recording;
+}
+
+function tick(){
+  FL=+$('fl').value;
+  let p=null;
+  if(T.length>=40){const d=analyze();if(d)p=bank(d);}
+  if(recording&&p){rec.push(p);if(rec.length>=1200){recording=false;ui();}}
+  if(replaying){
+    if(ri<rec.length)apply(rec[ri++]);else{replaying=false;apply(null);ui();}
+  }else if(live)apply(p);
+  $('recst').textContent=replaying?'Replaying '+(ri/10).toFixed(1)+' of '+(rec.length/10).toFixed(1)+' s':rec.length?(recording?'Recording ':'Recorded ')+(rec.length/10).toFixed(1)+' s':'Nothing recorded';
+}
+
+$('snd').onclick=()=>{audioInit();ac.resume();live=!live;if(!live)apply(null);ui();};
+$('rec').onclick=()=>{if(recording)recording=false;else{rec=[];recording=true;replaying=false;}ui();};
+$('rep').onclick=()=>{
+  if(replaying){replaying=false;apply(null);}
+  else{audioInit();ac.resume();recording=false;replaying=true;ri=0;}
+  ui();
+};
+drawSpec();
+</script>
+</body>
+</html>
