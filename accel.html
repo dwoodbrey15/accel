@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="theme-color" content="#0f1a22">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Vibration">
 <title>Vibration spectrum and spectrogram</title>
 <style>
 :root{--bg:#eef2f5;--fg:#14212b;--mut:#5b6b77;--card:#fff;--line:#c3cfd8;--acc:#0b7a75;--bad:#b42318;
@@ -58,6 +63,7 @@ select{width:100%;padding:5px 8px}
 <div class="three"><button id="snd" disabled>Play sound</button><button id="rec" disabled>Record</button><button id="rep" disabled>Replay</button></div>
 <div class="note">Sound follows the curve shown: each dot is a tone, and its loudness matches its height. Tones sound only above the dashed gate line. Turn the silent switch off.</div>
 <div id="err"></div>
+<div class="note" id="offline-panel"><span id="offline-status" role="status" aria-live="polite">Preparing offline access…</span><br>After setup, use Safari’s Share → Add to Home Screen. Open the Home Screen app once online before testing airplane mode.</div>
 </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -229,6 +235,52 @@ $('rep').onclick=()=>{
   ui();
 };
 drawSpec();
+</script>
+<script>
+(() => {
+  const label = document.getElementById('offline-status');
+  let saved = false;
+  const showStatus = () => {
+    label.textContent = saved
+      ? '✓ Available offline' + (navigator.onLine ? '' : ' · offline mode')
+      : 'Preparing offline access…';
+  };
+  addEventListener('online', showStatus);
+  addEventListener('offline', showStatus);
+  if (!('serviceWorker' in navigator) || !isSecureContext) {
+    label.textContent = 'Offline setup needs this page’s HTTPS website link in Safari.';
+    return;
+  }
+  const check = worker => new Promise((resolve, reject) => {
+    const channel = new MessageChannel();
+    const timer = setTimeout(() => {
+      channel.port1.close();
+      reject(new Error('Offline status timed out'));
+    }, 8000);
+    channel.port1.onmessage = event => {
+      clearTimeout(timer);
+      channel.port1.close();
+      resolve(event.data && event.data.ready === true);
+    };
+    worker.postMessage({type: 'OFFLINE_STATUS'}, [channel.port2]);
+  });
+  const verify = async () => {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      saved = await check(registration.active);
+      if (!saved) throw new Error('Cache is incomplete');
+      showStatus();
+    } catch {
+      label.textContent = 'Offline setup incomplete. Reload while online and check that all app files were uploaded.';
+    }
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', verify);
+  navigator.serviceWorker.register('./sw.js', {scope: './', updateViaCache: 'none'})
+    .then(verify)
+    .catch(() => {
+      label.textContent = 'Offline setup failed. Upload sw.js and the companion files beside accel.html, then reload online.';
+    });
+})();
 </script>
 </body>
 </html>
